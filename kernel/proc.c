@@ -32,11 +32,11 @@ void update_perf(){
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if (p->state == RUNNING)
-      p->performence->rutime = p->performence->rutime + 1;
+      p->rutime = p->rutime + 1;
     if (p->state == RUNNABLE)
-      p->performence->retime = p->performence->retime + 1;
+      p->retime = p->retime + 1;
     if (p->state == SLEEPING)
-      p->performence->stime = p->performence->stime +1;
+      p->stime = p->stime +1;
   	release(&p->lock);
   }
 }
@@ -143,8 +143,45 @@ found:
   }
 
   // Added for A1T3
-  // Allocate memory performence data.
-  if((p->performence = (struct perf *)kalloc()) == 0){
+  // Allocate memory for performence data.
+
+  if((p->ctime = (int *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  if((p->ctime = (int *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  if((p->ttime = (int *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  if((p->stime = (int *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  if((p->retime = (int *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  if((p->rutime = (int *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  if((p->average_bursttime = (int *)kalloc()) == 0){
     freeproc(p);
     release(&p->lock);
     return 0;
@@ -170,12 +207,12 @@ found:
   // Added for task 3
   // Initialize performence data.
   acquire(&tickslock);
-  p->performence->ctime = ticks;
-  p->performence->ttime = 0;
-  p->performence->stime = 0;
-  p->performence->retime = 0;
-  p->performence->rutime = 0;
-  p->performence->bursttime = 0;
+  p->ctime = ticks;
+  p->ttime = 0;
+  p->stime = 0;
+  p->retime = 0;
+  p->rutime = 0;
+  p->average_bursttime = 0;
 
   release(&tickslock);
 
@@ -202,6 +239,12 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  // Added for A1T3
+	// Update termination time.
+  acquire(&tickslock);
+  p->ttime = ticks;
+  release(&tickslock);
 }
 
 // Create a user page table for a given process,
@@ -446,6 +489,7 @@ wait(uint64 addr)
             release(&wait_lock);
             return -1;
           }
+          
           freeproc(np);
           release(&np->lock);
           release(&wait_lock);
@@ -469,12 +513,15 @@ wait(uint64 addr)
 
 /***** Added for A1T3 *****/
 int
-wait_stat(int* status, struct perf* performence){
+wait_stat(uint64 status, uint64 addr){
 
-  printf("in waitstat\n");
-  struct proc *np;
+ struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
+
+  struct perf performence;
+
+  
 
   acquire(&wait_lock);
 
@@ -490,26 +537,63 @@ wait_stat(int* status, struct perf* performence){
         if(np->state == ZOMBIE){
           // Found one.
           pid = np->pid;
+          if(status != 0 && copyout(p->pagetable, status, (char *)&np->xstate,
+                                  sizeof(np->xstate)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
 
-          if(status == 0 || performence == 0){
+          //*****A1T3*****//
+          if(addr == 0){
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (copyout(p->ctime, addr, (char *)&performence,
+                                  sizeof(np->ctime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          
+          if (copyout(p->ttime, addr, (char *)&performence+sizeof(int),
+                                  sizeof(np->ttime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (copyout(p->stime, addr, (char *)&performence+2*sizeof(int),
+                                  sizeof(np->stime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (copyout(p->retime, addr, (char *)&performence+3*sizeof(int),
+                                  sizeof(np->retime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (copyout(p->rutime, addr, (char *)&performence+4*sizeof(int),
+                                  sizeof(np->rutime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (copyout(p->average_bursttime, addr, (char *)&performence+5*sizeof(int),
+                                  sizeof(np->average_bursttime)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
 
           freeproc(np);
-
-          *status = np->xstate;
-
-	      	performence->ctime = np->performence->ctime;
-	      	performence->ttime = np->performence->ttime;
-	      	performence->stime = np->performence->stime;
-	      	performence->retime = np->performence->retime;
-	      	performence->rutime = np->performence->rutime;
-	      	performence->bursttime = np->performence->bursttime;
-
-          
-
           release(&np->lock);
           release(&wait_lock);
           return pid;
@@ -686,13 +770,6 @@ kill(int pid)
     acquire(&p->lock);
     if(p->pid == pid){
       p->killed = 1;
-
-    // Added for A1T3
-	  // Update termination time.
-	  acquire(&tickslock);
-	  p->performence->ttime = ticks;
-	  release(&tickslock);
-
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
@@ -764,7 +841,7 @@ procdump(void)
   }
 }
 
-//Added for A1T3
+//Added for A1T2
 int
 trace(int mask, int pid)
 {

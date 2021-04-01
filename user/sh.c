@@ -148,7 +148,7 @@ runcmd(struct cmd *cmd)
       exit(1);
   	// check in current directory
   	exec(ecmd->argv[0], ecmd->argv);
-	// check in path file
+	  // check in path file
   	int fd = open("/path", O_RDONLY);
   	if (fd < 0){
   		write(2,"could not open path file\n",40);
