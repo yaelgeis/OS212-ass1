@@ -112,10 +112,10 @@ sys_trace(void)
 uint64
 sys_wait_stat(void)
 {
-  int status;
-  uint64 p; // user pointer to struct stat
-  if((argint(0, &status) < 0) || argaddr(1, &p) < 0)
+  uint64 status;
+  uint64 perf; // user pointer to struct perf
+  if((argaddr(0, &status) < 0) || argaddr(1, &perf) < 0)
     return -1;
-  return trace(&status, &p);
+  return wait_stat(status, perf);
   
 }

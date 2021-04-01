@@ -32,11 +32,11 @@ void update_perf(){
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if (p->state == RUNNING)
-      p->rutime = p->rutime + 1;
+      p->rutime++;
     if (p->state == RUNNABLE)
-      p->retime = p->retime + 1;
+      p->retime++;
     if (p->state == SLEEPING)
-      p->stime = p->stime +1;
+      p->stime++;
   	release(&p->lock);
   }
 }
@@ -142,51 +142,6 @@ found:
     return 0;
   }
 
-  // Added for A1T3
-  // Allocate memory for performence data.
-
-  if((p->ctime = (int *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
-  if((p->ctime = (int *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
-  if((p->ttime = (int *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
-  if((p->stime = (int *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
-  if((p->retime = (int *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
-  if((p->rutime = (int *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
-  if((p->average_bursttime = (int *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -225,6 +180,7 @@ found:
 static void
 freeproc(struct proc *p)
 {
+
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -240,11 +196,7 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
 
-  // Added for A1T3
-	// Update termination time.
-  acquire(&tickslock);
-  p->ttime = ticks;
-  release(&tickslock);
+  
 }
 
 // Create a user page table for a given process,
@@ -452,6 +404,12 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
+  
+  // Added for A1T3
+  // update termination time
+  acquire(&tickslock);
+  p->ttime = ticks;
+  release(&tickslock);
 
   release(&wait_lock);
 
@@ -511,17 +469,12 @@ wait(uint64 addr)
 }
 
 
-/***** Added for A1T3 *****/
 int
-wait_stat(uint64 status, uint64 addr){
-
- struct proc *np;
+wait_stat(uint64 status, uint64 performence)
+{
+  struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
-
-  struct perf performence;
-
-  
 
   acquire(&wait_lock);
 
@@ -545,54 +498,54 @@ wait_stat(uint64 status, uint64 addr){
           }
 
           //*****A1T3*****//
-          if(addr == 0){
+          if(performence == 0){
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
 
-          if (copyout(p->ctime, addr, (char *)&performence,
+           if (copyout(p->pagetable, performence, (char*)&np->ctime,
                                   sizeof(np->ctime)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
           
-          if (copyout(p->ttime, addr, (char *)&performence+sizeof(int),
+          if (copyout(p->pagetable, performence+sizeof(int), (char*)&np->ttime,
                                   sizeof(np->ttime)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
 
-          if (copyout(p->stime, addr, (char *)&performence+2*sizeof(int),
+          if (copyout(p->pagetable, performence+2*sizeof(int), (char*)&np->stime,
                                   sizeof(np->stime)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
 
-          if (copyout(p->retime, addr, (char *)&performence+3*sizeof(int),
+          if (copyout(p->pagetable, performence+3*sizeof(int), (char*)&np->retime,
                                   sizeof(np->retime)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
 
-          if (copyout(p->rutime, addr, (char *)&performence+4*sizeof(int),
+          if (copyout(p->pagetable, performence+4*sizeof(int), (char*)&np->rutime,
                                   sizeof(np->rutime)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
 
-          if (copyout(p->average_bursttime, addr, (char *)&performence+5*sizeof(int),
+          if (copyout(p->pagetable, performence+5*sizeof(int), (char*)&np->average_bursttime,
                                   sizeof(np->average_bursttime)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
-
+          
           freeproc(np);
           release(&np->lock);
           release(&wait_lock);
@@ -612,6 +565,7 @@ wait_stat(uint64 status, uint64 addr){
     sleep(p, &wait_lock);  //DOC: wait-sleep
   }
 }
+
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.

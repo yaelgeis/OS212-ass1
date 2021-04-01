@@ -80,8 +80,8 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+/***A1T3***/
 struct perf{
-  /***A1T3***/
   int ctime;                  // process creation time
   int ttime;                  // process termination time
   int stime;                  // the total time the process spent in the SLEEPING state

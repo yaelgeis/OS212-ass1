@@ -56,27 +56,6 @@ struct cmd *parsecmd(char*);
 // Execute cmd.  Never returns.
 
 
-// TODO check 
-
-
-// // Like strncpy but guaranteed to NUL-terminate.
-// char*
-// safestrcpy(char *s, const char *t, int n)
-// {
-//   char *os;
-
-//   os = s;
-//   if(n <= 0)
-//     return os;
-//   while(--n > 0 && (*s++ = *t++) != 0)
-//     ;
-//   *s = 0;
-//   write(2, "\ninside copy:  ", 20);
-//   write(2, os, 10);
-//   write(2, "\n",1);
-//   return os;
-// }
-
 // Like strncpy but guaranteed to NUL-terminate.
 char*
 safestrcpy(const char *s, char *t, int n)
