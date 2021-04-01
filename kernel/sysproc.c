@@ -104,6 +104,6 @@ sys_trace(void)
   int pid;
   if((argint(0, &mask) < 0) || argint(1, &pid) < 0)
     return -1;
-  trace(mask, pid);
-  return 0;
+  return trace(mask, pid);
+  
 }

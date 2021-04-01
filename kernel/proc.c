@@ -765,7 +765,7 @@ procdump(void)
 }
 
 //Added for A1T3
-void
+int
 trace(int mask, int pid)
 {
   struct proc *p;
@@ -774,9 +774,10 @@ trace(int mask, int pid)
     if(p->pid == pid){
   		p->mask = mask;
   		release(&p->lock);
-  		break;
+  		return 0;
     }
   	release(&p->lock);
   }
+  return -1;
 }
 
