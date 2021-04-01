@@ -27,7 +27,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int trace(int, int);
-int wait_stat(int*, struct perf*);       //Added for A1T3
+int wait_stat(int*, struct perf*);       // Added for A1T3
+int set_priority(int);                   // Added for A1T4
 
 // ulib.c
 int stat(const char*, struct stat*);

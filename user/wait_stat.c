@@ -1,6 +1,5 @@
 #include "kernel/types.h"
 #include "kernel/stat.h"
-#include "kernel/defs.h"
 #include "user/user.h"
 
 struct perf {

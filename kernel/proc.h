@@ -126,4 +126,8 @@ struct proc {
   int retime;                 // the total time the process spent in the RUNNABLE state
   int rutime;                 // the total time the process spent in the RUNNING state
   int average_bursttime;      // approximate estimated burst time
+
+//***A1T4****/
+  int cptime;                 // the time when the process received the cpu time - FCFS
+  int decay_factor;           // CFSD
 };

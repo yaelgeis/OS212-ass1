@@ -20,5 +20,6 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
-#define SYS_trace  22  //A1T2
-#define SYS_wait_stat  23  //A1T3
+#define SYS_trace  22      // A1T2
+#define SYS_wait_stat  23  // A1T3
+#define SYS_set_priority 24 // A1T4

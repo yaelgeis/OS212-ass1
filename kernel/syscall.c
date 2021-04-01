@@ -106,6 +106,7 @@ extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_trace(void);  //A1T2
 extern uint64 sys_wait_stat(void);  //A1T3
+extern uint64 sys_set_priority(void); //A1T4
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -130,14 +131,15 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_trace]   sys_trace,   //A1T2
-[SYS_wait_stat]   sys_wait_stat   //A1T3
+[SYS_wait_stat]   sys_wait_stat,   //A1T3
+[SYS_set_priority]   sys_set_priority   //A1T3
 };
 
 //syscals names array for A1T2
 char* syscall_names[] = {"", "fork", "exit", "wait", "pipe", "read", "kill",
                           "exec", "fstat", "chdir", "dup", "getpid", "sbrk",
                           "sleep", "uptime", "open", "write", "mknod", "unlink",
-                          "link", "mkdir", "close", "trace", "wait_stat"};
+                          "link", "mkdir", "close", "trace", "wait_stat", "set_priority"};
 
 void
 syscall(void)

@@ -76,10 +76,15 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
+  //****A1T4*****//
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  acquire(&tickslock);
+  int t = ticks;
+  release(&tickslock);
 
+  if(which_dev == 2 && p->cptime +QUANTUM == t){ 
+    yield();
+  } 
   usertrapret();
 }
 
@@ -149,11 +154,20 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
-    yield();
+  struct proc *p = myproc();
+  
 
-  // the yield() may have caused some traps to occur,
+  //***A1T4***//
+  acquire(&tickslock);
+  int t = ticks;
+  release(&tickslock);
+  // give up the CPU if this is a timer interrupt.
+  
+  if(which_dev == 2 && p != 0 && p->state == RUNNING  && p->cptime+QUANTUM == t){
+    yield();
+  }
+
+  // the yield() may have caused some traps to occur, 
   // so restore trap registers for use by kernelvec.S's sepc instruction.
   w_sepc(sepc);
   w_sstatus(sstatus);
@@ -164,7 +178,7 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
-  update_perf();      //update performence each time tick - A1T2
+  update_perf();      //update performence each time tick - A1T3
   wakeup(&ticks);
   release(&tickslock);
 }

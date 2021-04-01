@@ -156,20 +156,22 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
-  // Added for task 2
+  // Added for A1T2
   p->mask = 0;
 
-  // Added for task 3
+  // Added for A1T3
   // Initialize performence data.
   acquire(&tickslock);
   p->ctime = ticks;
+  release(&tickslock);
+
   p->ttime = 0;
   p->stime = 0;
   p->retime = 0;
   p->rutime = 0;
   p->average_bursttime = 0;
 
-  release(&tickslock);
+  p->cptime = -1; //A1T4 - not running yet
 
   return p;
 }
@@ -566,6 +568,43 @@ wait_stat(uint64 status, uint64 performence)
   }
 }
 
+int
+set_priority(uint64 priority){
+  struct proc* p = myproc();
+  
+  if (priority == 1){
+    acquire(&p->lock);
+    p->decay_factor = 1;
+    release(&p->lock);
+    return 0;
+  }
+  if (priority == 2){
+    acquire(&p->lock);
+    p->decay_factor = 3;
+    release(&p->lock);
+    return 0;
+  }
+  if (priority == 3){
+    acquire(&p->lock);
+    p->decay_factor = 5;
+    release(&p->lock);
+    return 0;
+  }
+  if (priority == 4){
+    acquire(&p->lock);
+    p->decay_factor = 7;
+    release(&p->lock);
+    return 0;
+  }
+  if (priority == 5){
+    acquire(&p->lock);
+    p->decay_factor = 25;
+    release(&p->lock);
+    return 0;
+  }
+  return -1;
+}
+
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -592,17 +631,89 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+
+        //A1T4 - to track when the process started running
+        acquire(&tickslock);
+        p->cptime = ticks;
+        release(&tickslock);
+
         c->proc = p;
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        p->cptime = -1;     //A1T4
         c->proc = 0;
       }
       release(&p->lock);
     }
   }
 }
+
+
+float ratio_time(struct proc* p){
+  return (p->rutime + p->decay_factor)/(p->rutime + p->stime);
+}
+
+
+void
+cfsd_scheduler(void)
+{
+  struct proc *p;
+  struct proc *np = 0;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;){
+    float min_ratio = __UINTMAX_MAX__;
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state != RUNNABLE) {
+        release(&p->lock);
+        continue;
+      }
+
+      float curr_ratio = ratio_time(p);
+      if(curr_ratio < min_ratio){
+        min_ratio = curr_ratio;
+        np = p;
+      }
+      release(&p->lock);
+    }
+    
+    if (np == 0)
+      return;
+
+    acquire(&np->lock);
+
+    // Switch to chosen process.  It is the process's job
+    // to release its lock and then reacquire it
+    // before jumping back to us.
+    np->state = RUNNING;
+
+    acquire(&tickslock);
+    np->cptime = ticks;
+    release(&tickslock);
+
+    c->proc = p;
+    swtch(&c->context, &p->context);
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    p->cptime = -1;     //A1T4
+    c->proc = 0;
+  
+    release(&np->lock);
+  }
+}
+
+
+
+
+
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
