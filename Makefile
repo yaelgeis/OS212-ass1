@@ -1,5 +1,6 @@
 K=kernel
 U=user
+T=test
 
 OBJS = \
   $K/entry.o \
@@ -132,9 +133,10 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
+	$U/_trace\
 
-fs.img: mkfs/mkfs README $(UPROGS)
-	mkfs/mkfs fs.img README $(UPROGS)
+fs.img: mkfs/mkfs README path $(UPROGS)
+	mkfs/mkfs fs.img README path $(UPROGS)
 
 -include kernel/*.d user/*.d
 

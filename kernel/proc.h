@@ -80,6 +80,17 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+//A1T2
+/******* New struct ********/  
+struct perf {
+  int ctime;        // process creation time
+  int ttime;        // process termination time
+  int stime;        // the total time the process spent in the SLEEPING state
+  int retime;       // the total time the process spent in the RUNNABLE state
+  int rutime;       // the total time the process spent in the RUNNING state
+  float bursttime;  // approximate estimated burst time
+};
+
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
@@ -105,4 +116,8 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+/******* New Fields ********/  
+  int mask;                    // syscalls to trace
+  struct perf* performence; 
 };

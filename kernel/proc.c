@@ -26,6 +26,21 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
+//Added for A1T3
+void update_perf(){
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->state == RUNNING)
+      p->performence->rutime = p->performence->rutime + 1;
+    if (p->state == RUNNABLE)
+      p->performence->retime = p->performence->retime + 1;
+    if (p->state == SLEEPING)
+      p->performence->stime = p->performence->stime +1;
+  	release(&p->lock);
+  }
+}
+
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
@@ -127,6 +142,14 @@ found:
     return 0;
   }
 
+  // Added for A1T3
+  // Allocate memory performence data.
+  if((p->performence = (struct perf *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -140,6 +163,21 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+
+  // Added for task 2
+  p->mask = 0;
+
+  // Added for task 3
+  // Initialize performence data.
+  acquire(&tickslock);
+  p->performence->ctime = ticks;
+  p->performence->ttime = 0;
+  p->performence->stime = 0;
+  p->performence->retime = 0;
+  p->performence->rutime = 0;
+  p->performence->bursttime = 0;
+
+  release(&tickslock);
 
   return p;
 }
@@ -313,6 +351,7 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  np->mask = p->mask;     //A1T3
   release(&np->lock);
 
   return pid;
@@ -408,6 +447,69 @@ wait(uint64 addr)
             return -1;
           }
           freeproc(np);
+          release(&np->lock);
+          release(&wait_lock);
+          return pid;
+        }
+        release(&np->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || p->killed){
+      release(&wait_lock);
+      return -1;
+    }
+    
+    // Wait for a child to exit.
+    sleep(p, &wait_lock);  //DOC: wait-sleep
+  }
+}
+
+
+/***** Added for A1T3 *****/
+int
+wait_stat(int* status, struct perf* performence){
+
+  printf("in waitstat\n");
+  struct proc *np;
+  int havekids, pid;
+  struct proc *p = myproc();
+
+  acquire(&wait_lock);
+
+  for(;;){
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for(np = proc; np < &proc[NPROC]; np++){
+      if(np->parent == p){
+        // make sure the child isn't still in exit() or swtch().
+        acquire(&np->lock);
+
+        havekids = 1;
+        if(np->state == ZOMBIE){
+          // Found one.
+          pid = np->pid;
+
+          if(status == 0 || performence == 0){
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          freeproc(np);
+
+          *status = np->xstate;
+
+	      	performence->ctime = np->performence->ctime;
+	      	performence->ttime = np->performence->ttime;
+	      	performence->stime = np->performence->stime;
+	      	performence->retime = np->performence->retime;
+	      	performence->rutime = np->performence->rutime;
+	      	performence->bursttime = np->performence->bursttime;
+
+          
+
           release(&np->lock);
           release(&wait_lock);
           return pid;
@@ -584,6 +686,13 @@ kill(int pid)
     acquire(&p->lock);
     if(p->pid == pid){
       p->killed = 1;
+
+    // Added for A1T3
+	  // Update termination time.
+	  acquire(&tickslock);
+	  p->performence->ttime = ticks;
+	  release(&tickslock);
+
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
@@ -654,3 +763,20 @@ procdump(void)
     printf("\n");
   }
 }
+
+//Added for A1T3
+void
+trace(int mask, int pid)
+{
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->pid == pid){
+  		p->mask = mask;
+  		release(&p->lock);
+  		break;
+    }
+  	release(&p->lock);
+  }
+}
+

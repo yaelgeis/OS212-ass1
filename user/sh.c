@@ -54,6 +54,77 @@ void panic(char*);
 struct cmd *parsecmd(char*);
 
 // Execute cmd.  Never returns.
+
+
+// TODO check 
+
+
+// // Like strncpy but guaranteed to NUL-terminate.
+// char*
+// safestrcpy(char *s, const char *t, int n)
+// {
+//   char *os;
+
+//   os = s;
+//   if(n <= 0)
+//     return os;
+//   while(--n > 0 && (*s++ = *t++) != 0)
+//     ;
+//   *s = 0;
+//   write(2, "\ninside copy:  ", 20);
+//   write(2, os, 10);
+//   write(2, "\n",1);
+//   return os;
+// }
+
+// Like strncpy but guaranteed to NUL-terminate.
+char*
+safestrcpy(const char *s, char *t, int n)
+{
+  char *os;
+
+  os = t;
+  if(n <= 0){
+    return "";
+}
+ 
+  while(n > 0 && *s != 0){
+  	*t = *s;
+  	t++; s++;
+  	n--;
+  }
+  *t = '\0';
+  return os;
+}
+
+
+
+
+char*
+strtok(char* s, char del){
+  int i = 0;
+  if (!s || !del || s[i] == '\0') return "";
+  
+  while (s[i] != '\0' && s[i] != del){
+    i++;
+
+  }
+  char token[i];
+  return safestrcpy(s, token, i);
+
+}
+
+
+int
+strlen1(const char *s)
+{
+  int n;
+
+  for(n = 0; s[n]; n++)
+    ;
+  return n;
+}
+
 void
 runcmd(struct cmd *cmd)
 {
@@ -75,7 +146,40 @@ runcmd(struct cmd *cmd)
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
       exit(1);
-    exec(ecmd->argv[0], ecmd->argv);
+  	// check in current directory
+  	exec(ecmd->argv[0], ecmd->argv);
+	// check in path file
+  	int fd = open("/path", O_RDONLY);
+  	if (fd < 0){
+  		write(2,"could not open path file\n",40);
+  		exit(1);
+  	} 
+  	// fprintf(2, "file opened");
+  	char buf[1024];
+  	int num = read(fd, buf, 1024);
+  	if (num <= 0){
+  		write(2,"no bytes read from path\n",30);
+  		exit(1);
+  	}
+  	// fprintf(2, "read file");
+
+  	char* path = strtok(buf, ':');
+  	// write(2, "\npath: ", 7);
+  	// write(2,path,5);
+  	// write(2, "\n", 1);
+  	// write(2,"before while", 20);
+  	while (path[0] !=  '\0'){
+  		int len = strlen1(path);
+  		char command[2048];
+  		safestrcpy(path, command, strlen1(path));
+  		safestrcpy(ecmd->argv[0], command+strlen1(path), strlen1(ecmd->argv[0]));
+  		// write(2,"\ncommand: ",10);
+  		// write(2,command,30);
+  		exec(command, ecmd->argv);
+  		path = strtok(buf, ':');
+  		path = strtok(buf + len, ':');
+  	}
+    
     fprintf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
 
@@ -491,3 +595,5 @@ nulterminate(struct cmd *cmd)
   }
   return cmd;
 }
+
+

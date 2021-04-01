@@ -164,6 +164,7 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
+  update_perf();      //update performence each time tick - A1T2
   wakeup(&ticks);
   release(&tickslock);
 }
