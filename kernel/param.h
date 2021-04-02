@@ -12,13 +12,8 @@
 #define FSSIZE       1000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
 #define QUANTUM 	 5	   // Added for A1T4
-
-
-//A1T4 - scheduler types
-#define DEFAULT 	 0	   
-#define FCFS    	 1	   
-#define SRT 	     2
-#define CFSD    	 3	  
+ 
+#define ALPHA 	     50	   // Added for A1T4
 
 //A1T4 - decay factors
 #define THP 	 1  // Test High Priority	   

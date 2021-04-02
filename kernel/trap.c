@@ -78,13 +78,15 @@ usertrap(void)
 
   //****A1T4*****//
   // give up the CPU if this is a timer interrupt.
+  //TODO check why not checking if state == runnning 
+  #ifndef FCFS
   acquire(&tickslock);
   int t = ticks;
   release(&tickslock);
-
   if(which_dev == 2 && p->cptime +QUANTUM == t){ 
     yield();
   } 
+  #endif
   usertrapret();
 }
 
@@ -154,21 +156,21 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  struct proc *p = myproc();
+  // struct proc *p = myproc();
   
 
   //***A1T4***//
+  // give up the CPU if this is a timer interrupt.
+
+  #ifndef FCFS
+  struct proc *p = myproc();
   acquire(&tickslock);
   int t = ticks;
   release(&tickslock);
-  // give up the CPU if this is a timer interrupt.
-  
   if(which_dev == 2 && p != 0 && p->state == RUNNING  && p->cptime+QUANTUM == t){
     yield();
-  }
-
-  // the yield() may have caused some traps to occur, 
-  // so restore trap registers for use by kernelvec.S's sepc instruction.
+  } 
+  #endif
   w_sepc(sepc);
   w_sstatus(sstatus);
 }

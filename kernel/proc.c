@@ -31,8 +31,10 @@ void update_perf(){
   struct proc *p;
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    if (p->state == RUNNING)
+    if (p->state == RUNNING){
       p->rutime++;
+      p->Bi++;
+    }
     if (p->state == RUNNABLE)
       p->retime++;
     if (p->state == SLEEPING)
@@ -169,9 +171,10 @@ found:
   p->stime = 0;
   p->retime = 0;
   p->rutime = 0;
-  p->average_bursttime = 0;
+  p->average_bursttime = 100*QUANTUM;
 
   p->cptime = -1; //A1T4 - not running yet
+  p->Bi = -1;  //A1T4 - not running yet
 
   return p;
 }
@@ -571,51 +574,19 @@ wait_stat(uint64 status, uint64 performence)
 int
 set_priority(uint64 priority){
   struct proc* p = myproc();
-  
-  if (priority == 1){
-    acquire(&p->lock);
-    p->decay_factor = 1;
-    release(&p->lock);
-    return 0;
-  }
-  if (priority == 2){
-    acquire(&p->lock);
-    p->decay_factor = 3;
-    release(&p->lock);
-    return 0;
-  }
-  if (priority == 3){
-    acquire(&p->lock);
-    p->decay_factor = 5;
-    release(&p->lock);
-    return 0;
-  }
-  if (priority == 4){
-    acquire(&p->lock);
-    p->decay_factor = 7;
-    release(&p->lock);
-    return 0;
-  }
-  if (priority == 5){
-    acquire(&p->lock);
-    p->decay_factor = 25;
-    release(&p->lock);
-    return 0;
-  }
-  return -1;
+  if (priority < 1 || priority > 5)
+    return -1;
+  int pr[] = {0, THP, HP, NP, LP, TLP};
+  acquire(&p->lock);
+  p->decay_factor = pr[priority];
+  release(&p->lock);
+  return 0;
 }
 
 
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
 void
-scheduler(void)
-{
+default_scheduler(void){
+
   struct proc *p;
   struct cpu *c = mycpu();
   
@@ -630,13 +601,15 @@ scheduler(void)
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
+
+        p->Bi = 0;          //intialize current burst
         p->state = RUNNING;
 
         //A1T4 - to track when the process started running
         acquire(&tickslock);
         p->cptime = ticks;
         release(&tickslock);
-
+        
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -651,7 +624,58 @@ scheduler(void)
 }
 
 
-float ratio_time(struct proc* p){
+void
+fcfs_scheduler(void)
+{
+  struct proc *p;
+  struct proc *np = 0;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;){
+    int min_ctime = __INT32_MAX__;
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        if(p->ctime < min_ctime){
+          min_ctime = p->ctime;
+          np = p;
+        }
+      }
+      release(&p->lock);
+    }
+
+    if (np != 0){
+      acquire(&np->lock);
+      if (np->state == RUNNABLE){
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+
+        np->Bi = 0;          //intialize current burst
+        np->state = RUNNING;
+
+        acquire(&tickslock);
+        np->cptime = ticks;
+        release(&tickslock);
+
+        c->proc = np;
+        swtch(&c->context, &np->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        np->cptime = -1;     //A1T4
+        c->proc = 0;
+      }
+      release(&np->lock);
+    }
+  }
+}
+
+
+int ratio_time(struct proc* p){
   return (p->rutime + p->decay_factor)/(p->rutime + p->stime);
 }
 
@@ -660,56 +684,131 @@ void
 cfsd_scheduler(void)
 {
   struct proc *p;
+  struct proc *np =0;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;){
+    int min_ratio = __INT32_MAX__;
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        int curr_ratio = ratio_time(p);
+        if(curr_ratio < min_ratio){
+          min_ratio = curr_ratio;
+          np = p;
+        }
+      }
+      release(&p->lock);
+    }
+    
+    if (np != 0){
+
+      acquire(&np->lock);
+      if (np->state == RUNNABLE){
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+
+        np->Bi = 0;          //intialize current burst
+        np->state = RUNNING;
+
+        acquire(&tickslock);
+        np->cptime = ticks;
+        release(&tickslock);
+
+        c->proc = np;
+        swtch(&c->context, &np->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        np->cptime = -1;     //A1T4
+        c->proc = 0;
+      }
+      release(&np->lock);
+    }
+  }
+}
+
+
+void
+srt_scheduler(void)
+{
+  struct proc *p;
   struct proc *np = 0;
   struct cpu *c = mycpu();
   
   c->proc = 0;
   for(;;){
-    float min_ratio = __UINTMAX_MAX__;
+    int min_burst = __INT32_MAX__;
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if(p->state != RUNNABLE) {
-        release(&p->lock);
-        continue;
-      }
-
-      float curr_ratio = ratio_time(p);
-      if(curr_ratio < min_ratio){
-        min_ratio = curr_ratio;
-        np = p;
+      if(p->state == RUNNABLE) {
+        int curr_burst = p->average_bursttime;
+        if(curr_burst < min_burst){
+          min_burst = curr_burst;
+          np = p;
+        }
       }
       release(&p->lock);
     }
     
-    if (np == 0)
-      return;
+    if (np != 0){
 
-    acquire(&np->lock);
+      acquire(&np->lock);
+      if (np->state == RUNNABLE){
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->Bi = 0;          //intialize current burst
+        np->state = RUNNING;
 
-    // Switch to chosen process.  It is the process's job
-    // to release its lock and then reacquire it
-    // before jumping back to us.
-    np->state = RUNNING;
+        acquire(&tickslock);
+        np->cptime = ticks;
+        release(&tickslock);
 
-    acquire(&tickslock);
-    np->cptime = ticks;
-    release(&tickslock);
+        c->proc = np;
+        swtch(&c->context, &np->context);
 
-    c->proc = p;
-    swtch(&c->context, &p->context);
-
-    // Process is done running for now.
-    // It should have changed its p->state before coming back.
-    p->cptime = -1;     //A1T4
-    c->proc = 0;
-  
-    release(&np->lock);
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        np->cptime = -1;     //A1T4
+        c->proc = 0;
+      }
+      release(&np->lock);
+    }
   }
 }
 
 
+
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns.  It loops, doing:
+//  - choose a process to run.
+//  - swtch to start running that process.
+//  - eventually that process transfers control
+//    via swtch back to the scheduler.
+void
+scheduler(void)
+{
+  #ifdef DEFAULT
+  default_scheduler();
+  #endif
+  #ifdef FCFS
+  fcfs_scheduler();
+  #endif
+  #ifdef CFSD
+  cfsd_scheduler();
+  #endif
+  #ifdef SRT
+  srt_scheduler();
+  #endif
+}
 
 
 
@@ -749,6 +848,10 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+
+  // A1T4 - SRT
+  p->average_bursttime = (ALPHA*(p->Bi)+(100-ALPHA)*(p->average_bursttime))/100;
+  
   sched();
   release(&p->lock);
 }
@@ -794,6 +897,9 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+  
+  // A1T4 - SRT
+  p->average_bursttime = (ALPHA*(p->Bi)+(100-ALPHA)*(p->average_bursttime))/100;
 
   sched();
 

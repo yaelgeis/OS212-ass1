@@ -96,6 +96,14 @@ struct cpu*     getmycpu(void);
 struct proc*    myproc();
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
+
+//A1T4
+void            default_scheduler(void) __attribute__((noreturn));
+void            fcfs_scheduler(void) __attribute__((noreturn));
+void            cfsd_scheduler(void) __attribute__((noreturn));
+void            srt_scheduler(void) __attribute__((noreturn));
+
+
 void            sched(void);
 void            setproc(struct proc*);
 void            sleep(void*, struct spinlock*);
