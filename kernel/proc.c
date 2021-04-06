@@ -176,6 +176,8 @@ found:
   p->cptime = -1; //A1T4 - not running yet
   p->Bi = -1;  //A1T4 - not running yet
 
+  p->decay_factor = NP; //A1T4 CFSD
+
   return p;
 }
 
@@ -352,6 +354,7 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   np->mask = p->mask;     //A1T3
+  np->decay_factor = p->decay_factor; //A1T3
   release(&np->lock);
 
   return pid;
