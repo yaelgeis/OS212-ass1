@@ -33,7 +33,7 @@ void update_perf(){
     acquire(&p->lock);
     if (p->state == RUNNING){
       p->rutime++;
-      p->Bi++;
+      p->current_burst++;
     }
     if (p->state == RUNNABLE)
       p->retime++;
@@ -174,7 +174,8 @@ found:
   p->average_bursttime = 100*QUANTUM;
 
   p->cptime = -1; //A1T4 - not running yet
-  p->Bi = -1;  //A1T4 - not running yet
+  p->current_burst = -1;  //A1T4 - not running yet
+  p->runnable_time = -1;  //A1T4 FCFS 
 
   p->decay_factor = NP; //A1T4 CFSD
 
@@ -283,6 +284,10 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  // A1T4 - FCFS
+  acquire(&tickslock);
+  p->runnable_time = ticks;
+  release(&tickslock);
 
   release(&p->lock);
 }
@@ -353,8 +358,14 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
-  np->mask = p->mask;     //A1T3
-  np->decay_factor = p->decay_factor; //A1T3
+  // A1T4 - FCFS
+  acquire(&tickslock);
+  p->runnable_time = ticks;
+  release(&tickslock);
+
+  //A1t3
+  np->mask = p->mask;     
+  np->decay_factor = p->decay_factor; 
   release(&np->lock);
 
   return pid;
@@ -605,7 +616,7 @@ default_scheduler(void){
         // to release its lock and then reacquire it
         // before jumping back to us.
 
-        p->Bi = 0;          //intialize current burst
+        p->current_burst = 0;          //intialize current burst
         p->state = RUNNING;
 
         //A1T4 - to track when the process started running
@@ -631,25 +642,23 @@ void
 fcfs_scheduler(void)
 {
   struct proc *p;
-  struct proc *np = 0;
   struct cpu *c = mycpu();
-  
   c->proc = 0;
   for(;;){
+    struct proc *np = 0;
     int min_ctime = __INT32_MAX__;
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        if(p->ctime < min_ctime){
-          min_ctime = p->ctime;
+        if(p->runnable_time < min_ctime){
+          min_ctime = p->runnable_time;
           np = p;
         }
       }
       release(&p->lock);
     }
-
     if (np != 0){
       acquire(&np->lock);
       if (np->state == RUNNABLE){
@@ -657,7 +666,7 @@ fcfs_scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
 
-        np->Bi = 0;          //intialize current burst
+        np->current_burst = 0;          //intialize current burst
         np->state = RUNNING;
 
         acquire(&tickslock);
@@ -679,6 +688,8 @@ fcfs_scheduler(void)
 
 
 int ratio_time(struct proc* p){
+  if (p->rutime + p->stime == 0)
+    return 0;
   return (p->rutime + p->decay_factor)/(p->rutime + p->stime);
 }
 
@@ -687,11 +698,11 @@ void
 cfsd_scheduler(void)
 {
   struct proc *p;
-  struct proc *np =0;
   struct cpu *c = mycpu();
   
   c->proc = 0;
   for(;;){
+    struct proc *np =0;
     int min_ratio = __INT32_MAX__;
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
@@ -708,14 +719,13 @@ cfsd_scheduler(void)
     }
     
     if (np != 0){
-
       acquire(&np->lock);
       if (np->state == RUNNABLE){
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
 
-        np->Bi = 0;          //intialize current burst
+        np->current_burst = 0;          //intialize current burst
         np->state = RUNNING;
 
         acquire(&tickslock);
@@ -740,11 +750,11 @@ void
 srt_scheduler(void)
 {
   struct proc *p;
-  struct proc *np = 0;
   struct cpu *c = mycpu();
   
   c->proc = 0;
   for(;;){
+    struct proc *np = 0;
     int min_burst = __INT32_MAX__;
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
@@ -767,7 +777,7 @@ srt_scheduler(void)
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        p->Bi = 0;          //intialize current burst
+        p->current_burst = 0;          //intialize current burst
         np->state = RUNNING;
 
         acquire(&tickslock);
@@ -800,15 +810,19 @@ void
 scheduler(void)
 {
   #ifdef DEFAULT
+  printf("DEFAULT scheduler started\n");  
   default_scheduler();
   #endif
   #ifdef FCFS
+  printf("FCFS scheduler started\n");  
   fcfs_scheduler();
   #endif
   #ifdef CFSD
+  printf("CFSD scheduler started\n");  
   cfsd_scheduler();
   #endif
   #ifdef SRT
+  printf("SRT scheduler started\n");
   srt_scheduler();
   #endif
 }
@@ -851,9 +865,12 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
-
+  // A1T4 - FCFS
+  acquire(&tickslock);
+  p->runnable_time = ticks;
+  release(&tickslock);
   // A1T4 - SRT
-  p->average_bursttime = (ALPHA*(p->Bi)+(100-ALPHA)*(p->average_bursttime))/100;
+  p->average_bursttime = (ALPHA*(p->current_burst)+(100-ALPHA)*(p->average_bursttime))/100;
   
   sched();
   release(&p->lock);
@@ -902,7 +919,7 @@ sleep(void *chan, struct spinlock *lk)
   p->state = SLEEPING;
   
   // A1T4 - SRT
-  p->average_bursttime = (ALPHA*(p->Bi)+(100-ALPHA)*(p->average_bursttime))/100;
+  p->average_bursttime = (ALPHA*(p->current_burst)+(100-ALPHA)*(p->average_bursttime))/100;
 
   sched();
 
@@ -926,6 +943,11 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+
+        // A1T4 - FCFS
+        acquire(&tickslock);
+        p->runnable_time = ticks;
+        release(&tickslock);
       }
       release(&p->lock);
     }
@@ -947,6 +969,10 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        // A1T4 - FCFS
+        acquire(&tickslock);
+        p->runnable_time = ticks;
+        release(&tickslock);
       }
       release(&p->lock);
       return 0;

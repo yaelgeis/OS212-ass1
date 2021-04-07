@@ -78,7 +78,6 @@ usertrap(void)
 
   //****A1T4*****//
   // give up the CPU if this is a timer interrupt.
-  //TODO check why not checking if state == runnning 
   #ifndef FCFS
   acquire(&tickslock);
   int t = ticks;
@@ -156,8 +155,6 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  // struct proc *p = myproc();
-  
 
   //***A1T4***//
   // give up the CPU if this is a timer interrupt.
@@ -167,7 +164,7 @@ kerneltrap()
   acquire(&tickslock);
   int t = ticks;
   release(&tickslock);
-  if(which_dev == 2 && p != 0 && p->state == RUNNING  && p->cptime+QUANTUM == t){
+  if(which_dev == 2 && p != 0 && p->state == RUNNING && p->cptime+QUANTUM == t){
     yield();
   } 
   #endif
