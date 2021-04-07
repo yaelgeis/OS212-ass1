@@ -699,13 +699,14 @@ cfsd_scheduler(void)
   for(;;){
     struct proc *np =0;
     int min_ratio = __INT32_MAX__;
+    int np_q = __INT32_MAX__;
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
         int curr_ratio = ratio_time(p);
-        if(curr_ratio < min_ratio){
+        if(curr_ratio < min_ratio || (curr_ratio == min_ratio && p->fcfs_q < np_q)){
           min_ratio = curr_ratio;
           np = p;
         }
@@ -745,14 +746,16 @@ srt_scheduler(void)
   for(;;){
     struct proc *np = 0;
     int min_burst = __INT32_MAX__;
+    int np_q = __INT32_MAX__;
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        if(p->average_bursttime < min_burst){
+        if(p->average_bursttime < min_burst || (p->average_bursttime == min_burst && p->fcfs_q < np_q)){
           min_burst = p->average_bursttime;
           np = p;
+          np_q = p->fcfs_q;
         }
       }
       release(&p->lock);
@@ -898,6 +901,7 @@ sleep(void *chan, struct spinlock *lk)
 
   // Go to sleep.
   p->chan = chan;
+
   p->state = SLEEPING;
   
 

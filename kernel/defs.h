@@ -116,8 +116,8 @@ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 int 			trace(int mask, int pid);                   //Added for A1T2
 void 			update_perf();                              //Added for A1T3
-int 			wait_stat(uint64, uint64);       //Added for A1T3
-int             set_priority(uint64); //Added for A1T3 - CFSD
+int 			wait_stat(uint64, uint64);                  //Added for A1T3
+int             set_priority(uint64);                       //Added for A1T3 - CFSD
 
 // swtch.S
 void            swtch(struct context*, struct context*);
