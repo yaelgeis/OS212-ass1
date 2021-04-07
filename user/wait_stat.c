@@ -8,7 +8,7 @@ struct perf {
   int stime;        // the total time the process spent in the SLEEPING state
   int retime;       // the total time the process spent in the RUNNABLE state
   int rutime;       // the total time the process spent in the RUNNING state
-  float bursttime;  // approximate estimated burst time
+  int bursttime;  // approximate estimated burst time
 };
 
 void print_perf(struct perf *performance) {
@@ -18,6 +18,7 @@ void print_perf(struct perf *performance) {
     fprintf(1, "\tstime: %d\n", performance->stime);
     fprintf(1, "\tretime: %d\n", performance->retime);
     fprintf(1, "\trutime: %d\n", performance->rutime);
+	fprintf(1, "\tbursttime: %d\n", performance->bursttime);
     fprintf(1, "\n\tTurnaround time: %d\n", (performance->ttime - performance->ctime));
 }
 

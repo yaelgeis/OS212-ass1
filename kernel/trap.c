@@ -79,10 +79,7 @@ usertrap(void)
   //****A1T4*****//
   // give up the CPU if this is a timer interrupt.
   #ifndef FCFS
-  acquire(&tickslock);
-  int t = ticks;
-  release(&tickslock);
-  if(which_dev == 2 && p->cptime +QUANTUM == t){ 
+  if(which_dev == 2 && p->current_burst >= QUANTUM){ 
     yield();
   } 
   #endif
@@ -161,10 +158,7 @@ kerneltrap()
 
   #ifndef FCFS
   struct proc *p = myproc();
-  acquire(&tickslock);
-  int t = ticks;
-  release(&tickslock);
-  if(which_dev == 2 && p != 0 && p->state == RUNNING && p->cptime+QUANTUM == t){
+  if(which_dev == 2 && p != 0 && p->state == RUNNING && p->current_burst >= QUANTUM){
     yield();
   } 
   #endif

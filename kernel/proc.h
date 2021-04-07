@@ -130,7 +130,6 @@ struct proc {
 //***A1T4****/
   int decay_factor;           // CFSD
   
-  int cptime;                 // the time when the process received the cpu time - FCFS
   int current_burst;          // the length of the current burst (to calc average bursttime)
-  int runnable_time;          // tracks the last time when a process became runnable (for FCFS)
+  // int runnable_time;          // tracks the last time when a process became runnable (for FCFS)
 };

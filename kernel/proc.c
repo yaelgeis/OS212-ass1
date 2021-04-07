@@ -173,9 +173,8 @@ found:
   p->rutime = 0;
   p->average_bursttime = 100*QUANTUM;
 
-  p->cptime = -1; //A1T4 - not running yet
-  p->current_burst = -1;  //A1T4 - not running yet
-  p->runnable_time = -1;  //A1T4 FCFS 
+  p->current_burst = 0;  //A1T4 - not running yet
+  // p->runnable_time = -1;  //A1T4 FCFS 
 
   p->decay_factor = NP; //A1T4 CFSD
 
@@ -285,9 +284,9 @@ userinit(void)
 
   p->state = RUNNABLE;
   // A1T4 - FCFS
-  acquire(&tickslock);
-  p->runnable_time = ticks;
-  release(&tickslock);
+  // acquire(&tickslock);
+  // p->runnable_time = ticks;
+  // release(&tickslock);
 
   release(&p->lock);
 }
@@ -359,9 +358,9 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   // A1T4 - FCFS
-  acquire(&tickslock);
-  p->runnable_time = ticks;
-  release(&tickslock);
+  // acquire(&tickslock);
+  // p->runnable_time = ticks;
+  // release(&tickslock);
 
   //A1t3
   np->mask = p->mask;     
@@ -429,7 +428,8 @@ exit(int status)
   acquire(&tickslock);
   p->ttime = ticks;
   release(&tickslock);
-
+ 
+  
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
@@ -619,17 +619,11 @@ default_scheduler(void){
         p->current_burst = 0;          //intialize current burst
         p->state = RUNNING;
 
-        //A1T4 - to track when the process started running
-        acquire(&tickslock);
-        p->cptime = ticks;
-        release(&tickslock);
-        
         c->proc = p;
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
-        p->cptime = -1;     //A1T4
         c->proc = 0;
       }
       release(&p->lock);
@@ -652,8 +646,12 @@ fcfs_scheduler(void)
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        if(p->runnable_time < min_ctime){
-          min_ctime = p->runnable_time;
+        // if(p->runnable_time < min_ctime){
+        //   min_ctime = p->runnable_time;
+        //   np = p;
+        // }
+        if(p->ctime < min_ctime){
+          min_ctime = p->ctime;
           np = p;
         }
       }
@@ -669,16 +667,13 @@ fcfs_scheduler(void)
         np->current_burst = 0;          //intialize current burst
         np->state = RUNNING;
 
-        acquire(&tickslock);
-        np->cptime = ticks;
-        release(&tickslock);
+
 
         c->proc = np;
         swtch(&c->context, &np->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
-        np->cptime = -1;     //A1T4
         c->proc = 0;
       }
       release(&np->lock);
@@ -690,7 +685,7 @@ fcfs_scheduler(void)
 int ratio_time(struct proc* p){
   if (p->rutime + p->stime == 0)
     return 0;
-  return (p->rutime + p->decay_factor)/(p->rutime + p->stime);
+  return (p->rutime * p->decay_factor)/(p->rutime + p->stime);
 }
 
 
@@ -728,16 +723,11 @@ cfsd_scheduler(void)
         np->current_burst = 0;          //intialize current burst
         np->state = RUNNING;
 
-        acquire(&tickslock);
-        np->cptime = ticks;
-        release(&tickslock);
-
         c->proc = np;
         swtch(&c->context, &np->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
-        np->cptime = -1;     //A1T4
         c->proc = 0;
       }
       release(&np->lock);
@@ -751,7 +741,6 @@ srt_scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
   c->proc = 0;
   for(;;){
     struct proc *np = 0;
@@ -761,35 +750,27 @@ srt_scheduler(void)
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        int curr_burst = p->average_bursttime;
-        if(curr_burst < min_burst){
-          min_burst = curr_burst;
+        if(p->average_bursttime < min_burst){
+          min_burst = p->average_bursttime;
           np = p;
         }
       }
       release(&p->lock);
     }
-    
     if (np != 0){
-
       acquire(&np->lock);
       if (np->state == RUNNABLE){
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        p->current_burst = 0;          //intialize current burst
+
+        np->current_burst = 0;          //intialize current burst
         np->state = RUNNING;
-
-        acquire(&tickslock);
-        np->cptime = ticks;
-        release(&tickslock);
-
         c->proc = np;
         swtch(&c->context, &np->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
-        np->cptime = -1;     //A1T4
         c->proc = 0;
       }
       release(&np->lock);
@@ -853,6 +834,8 @@ sched(void)
   if(intr_get())
     panic("sched interruptible");
 
+  p->average_bursttime = (ALPHA*(p->current_burst))+((100-ALPHA)*(p->average_bursttime))/100;
+
   intena = mycpu()->intena;
   swtch(&p->context, &mycpu()->context);
   mycpu()->intena = intena;
@@ -866,11 +849,9 @@ yield(void)
   acquire(&p->lock);
   p->state = RUNNABLE;
   // A1T4 - FCFS
-  acquire(&tickslock);
-  p->runnable_time = ticks;
-  release(&tickslock);
-  // A1T4 - SRT
-  p->average_bursttime = (ALPHA*(p->current_burst)+(100-ALPHA)*(p->average_bursttime))/100;
+  // acquire(&tickslock);
+  // p->runnable_time = ticks;
+  // release(&tickslock);
   
   sched();
   release(&p->lock);
@@ -918,8 +899,6 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
   
-  // A1T4 - SRT
-  p->average_bursttime = (ALPHA*(p->current_burst)+(100-ALPHA)*(p->average_bursttime))/100;
 
   sched();
 
@@ -945,9 +924,9 @@ wakeup(void *chan)
         p->state = RUNNABLE;
 
         // A1T4 - FCFS
-        acquire(&tickslock);
-        p->runnable_time = ticks;
-        release(&tickslock);
+        // acquire(&tickslock);
+        // p->runnable_time = ticks;
+        // release(&tickslock);
       }
       release(&p->lock);
     }
@@ -970,9 +949,9 @@ kill(int pid)
         // Wake process from sleep().
         p->state = RUNNABLE;
         // A1T4 - FCFS
-        acquire(&tickslock);
-        p->runnable_time = ticks;
-        release(&tickslock);
+        // acquire(&tickslock);
+        // p->runnable_time = ticks;
+        // release(&tickslock);
       }
       release(&p->lock);
       return 0;
