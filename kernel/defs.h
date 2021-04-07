@@ -159,6 +159,8 @@ void            trapinit(void);
 void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
+extern int      FCFS_Q;                         // A1T4
+extern struct spinlock fcfs_lock;      // A1T4
 
 // uart.c
 void            uartinit(void);

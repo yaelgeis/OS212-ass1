@@ -12,7 +12,10 @@ struct proc proc[NPROC];
 
 struct proc *initproc;
 
+
+
 int nextpid = 1;
+
 struct spinlock pid_lock;
 
 extern void forkret(void);
@@ -174,7 +177,6 @@ found:
   p->average_bursttime = 100*QUANTUM;
 
   p->current_burst = 0;  //A1T4 - not running yet
-  // p->runnable_time = -1;  //A1T4 FCFS 
 
   p->decay_factor = NP; //A1T4 CFSD
 
@@ -284,9 +286,10 @@ userinit(void)
 
   p->state = RUNNABLE;
   // A1T4 - FCFS
-  // acquire(&tickslock);
-  // p->runnable_time = ticks;
-  // release(&tickslock);
+  acquire(&fcfs_lock);
+  p->fcfs_q = FCFS_Q;
+  FCFS_Q++;
+  release(&fcfs_lock);
 
   release(&p->lock);
 }
@@ -358,9 +361,10 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   // A1T4 - FCFS
-  // acquire(&tickslock);
-  // p->runnable_time = ticks;
-  // release(&tickslock);
+  acquire(&fcfs_lock);
+  p->fcfs_q = FCFS_Q;
+  FCFS_Q++;
+  release(&fcfs_lock);
 
   //A1t3
   np->mask = p->mask;     
@@ -640,18 +644,14 @@ fcfs_scheduler(void)
   c->proc = 0;
   for(;;){
     struct proc *np = 0;
-    int min_ctime = __INT32_MAX__;
+    int min_q = __INT32_MAX__;
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // if(p->runnable_time < min_ctime){
-        //   min_ctime = p->runnable_time;
-        //   np = p;
-        // }
-        if(p->ctime < min_ctime){
-          min_ctime = p->ctime;
+        if(p->fcfs_q < min_q){
+          min_q = p->fcfs_q;
           np = p;
         }
       }
@@ -849,9 +849,11 @@ yield(void)
   acquire(&p->lock);
   p->state = RUNNABLE;
   // A1T4 - FCFS
-  // acquire(&tickslock);
-  // p->runnable_time = ticks;
-  // release(&tickslock);
+
+  acquire(&fcfs_lock);
+  p->fcfs_q = FCFS_Q;
+  FCFS_Q++;
+  release(&fcfs_lock);
   
   sched();
   release(&p->lock);
@@ -884,7 +886,6 @@ void
 sleep(void *chan, struct spinlock *lk)
 {
   struct proc *p = myproc();
-  
   // Must acquire p->lock in order to
   // change p->state and then call sched.
   // Once we hold p->lock, we can be
@@ -924,9 +925,11 @@ wakeup(void *chan)
         p->state = RUNNABLE;
 
         // A1T4 - FCFS
-        // acquire(&tickslock);
-        // p->runnable_time = ticks;
-        // release(&tickslock);
+        acquire(&fcfs_lock);
+        p->fcfs_q = FCFS_Q;
+        FCFS_Q++;
+        release(&fcfs_lock);
+
       }
       release(&p->lock);
     }
@@ -949,9 +952,10 @@ kill(int pid)
         // Wake process from sleep().
         p->state = RUNNABLE;
         // A1T4 - FCFS
-        // acquire(&tickslock);
-        // p->runnable_time = ticks;
-        // release(&tickslock);
+        acquire(&fcfs_lock);
+        p->fcfs_q = FCFS_Q;
+        FCFS_Q++;
+        release(&fcfs_lock);
       }
       release(&p->lock);
       return 0;

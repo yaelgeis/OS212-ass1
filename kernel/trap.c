@@ -9,6 +9,9 @@
 struct spinlock tickslock;
 uint ticks;
 
+int FCFS_Q = 0;
+struct spinlock fcfs_lock;
+
 extern char trampoline[], uservec[], userret[];
 
 // in kernelvec.S, calls kerneltrap().
@@ -19,6 +22,7 @@ extern int devintr();
 void
 trapinit(void)
 {
+  initlock(&fcfs_lock, "fcfs queue");
   initlock(&tickslock, "time");
 }
 

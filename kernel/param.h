@@ -15,9 +15,11 @@
  
 #define ALPHA 	     50	   // Added for A1T4
 
-//A1T4 - decay factors
+//A1T4 - decay factors CFSD
 #define THP 	 1  // Test High Priority	   
 #define HP 	     3  // High Priority	   
 #define NP 	     5  // Normal Priority
 #define LP 	     7  // Low Priority
 #define TLP 	 25 // Test Low Priority
+
+
