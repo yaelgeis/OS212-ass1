@@ -9,6 +9,8 @@
 struct spinlock tickslock;
 uint ticks;
 
+
+// A1T4 - a variable to track the order of the runnable proccesses
 int FCFS_Q = 0;
 struct spinlock fcfs_lock;
 
