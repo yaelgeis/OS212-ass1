@@ -80,15 +80,14 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
-//A1T2
-/******* New struct ********/  
-struct perf {
-  int ctime;        // process creation time
-  int ttime;        // process termination time
-  int stime;        // the total time the process spent in the SLEEPING state
-  int retime;       // the total time the process spent in the RUNNABLE state
-  int rutime;       // the total time the process spent in the RUNNING state
-  float bursttime;  // approximate estimated burst time
+/***A1T3***/
+struct perf{
+  int ctime;                  // process creation time
+  int ttime;                  // process termination time
+  int stime;                  // the total time the process spent in the SLEEPING state
+  int retime;                 // the total time the process spent in the RUNNABLE state
+  int rutime;                 // the total time the process spent in the RUNNING state
+  int average_bursttime;      // approximate estimated burst time
 };
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
@@ -118,6 +117,19 @@ struct proc {
   char name[16];               // Process name (debugging)
 
 /******* New Fields ********/  
-  int mask;                    // syscalls to trace
-  struct perf* performence; 
+  int mask;                    // syscalls to trace - A1T2
+
+/***A1T3***/
+  int ctime;                  // process creation time
+  int ttime;                  // process termination time
+  int stime;                  // the total time the process spent in the SLEEPING state
+  int retime;                 // the total time the process spent in the RUNNABLE state
+  int rutime;                 // the total time the process spent in the RUNNING state
+  int average_bursttime;      // approximate estimated burst time
+
+//***A1T4****/
+  int decay_factor;           // CFSD
+  
+  int current_burst;          // the length of the current burst (to calc average bursttime)
+  int fcfs_q;          // tracks the last time when a process became runnable (for FCFS)
 };

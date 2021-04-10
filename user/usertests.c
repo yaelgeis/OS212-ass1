@@ -784,6 +784,9 @@ pipe1(char *s)
 void
 killstatus(char *s)
 {
+  #ifdef FCFS
+  exit(0);
+  #endif
   int xst;
   
   for(int i = 0; i < 100; i++){
@@ -813,6 +816,9 @@ killstatus(char *s)
 void
 preempt(char *s)
 {
+  #ifdef FCFS
+  exit(0);
+  #endif
   int pid1, pid2, pid3;
   int pfds[2];
 

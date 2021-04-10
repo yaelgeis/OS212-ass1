@@ -107,3 +107,26 @@ sys_trace(void)
   return trace(mask, pid);
   
 }
+
+//A1T3
+uint64
+sys_wait_stat(void)
+{
+  uint64 status;
+  uint64 perf; // user pointer to struct perf
+  if((argaddr(0, &status) < 0) || argaddr(1, &perf) < 0)
+    return -1;
+  return wait_stat(status, perf);
+  
+}
+
+
+//A1T4
+uint64
+sys_set_priority(void)
+{
+  int priority;
+  if((argint(0, &priority) < 0))
+    return -1;
+  return set_priority(priority);
+}

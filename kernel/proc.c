@@ -12,7 +12,10 @@ struct proc proc[NPROC];
 
 struct proc *initproc;
 
+
+
 int nextpid = 1;
+
 struct spinlock pid_lock;
 
 extern void forkret(void);
@@ -31,12 +34,14 @@ void update_perf(){
   struct proc *p;
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    if (p->state == RUNNING)
-      p->performence->rutime = p->performence->rutime + 1;
+    if (p->state == RUNNING){
+      p->rutime++;
+      p->current_burst++;
+    }
     if (p->state == RUNNABLE)
-      p->performence->retime = p->performence->retime + 1;
+      p->retime++;
     if (p->state == SLEEPING)
-      p->performence->stime = p->performence->stime +1;
+      p->stime++;
   	release(&p->lock);
   }
 }
@@ -142,14 +147,6 @@ found:
     return 0;
   }
 
-  // Added for A1T3
-  // Allocate memory performence data.
-  if((p->performence = (struct perf *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -164,20 +161,24 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
-  // Added for task 2
+  // Added for A1T2
   p->mask = 0;
 
-  // Added for task 3
+  // Added for A1T3
   // Initialize performence data.
   acquire(&tickslock);
-  p->performence->ctime = ticks;
-  p->performence->ttime = 0;
-  p->performence->stime = 0;
-  p->performence->retime = 0;
-  p->performence->rutime = 0;
-  p->performence->bursttime = 0;
-
+  p->ctime = ticks;
   release(&tickslock);
+
+  p->ttime = 0;
+  p->stime = 0;
+  p->retime = 0;
+  p->rutime = 0;
+  p->average_bursttime = 100*QUANTUM;
+
+  p->current_burst = 0;  //A1T4 - not running yet
+
+  p->decay_factor = NP; //A1T4 CFSD
 
   return p;
 }
@@ -188,6 +189,7 @@ found:
 static void
 freeproc(struct proc *p)
 {
+
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -202,6 +204,8 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  
 }
 
 // Create a user page table for a given process,
@@ -281,6 +285,11 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  // A1T4 - FCFS
+  acquire(&fcfs_lock);
+  p->fcfs_q = FCFS_Q;
+  FCFS_Q++;
+  release(&fcfs_lock);
 
   release(&p->lock);
 }
@@ -351,7 +360,15 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
-  np->mask = p->mask;     //A1T3
+  // A1T4 - FCFS
+  acquire(&fcfs_lock);
+  p->fcfs_q = FCFS_Q;
+  FCFS_Q++;
+  release(&fcfs_lock);
+
+  //A1t3
+  np->mask = p->mask;     
+  np->decay_factor = p->decay_factor; 
   release(&np->lock);
 
   return pid;
@@ -409,7 +426,14 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
-
+  
+  // Added for A1T3
+  // update termination time
+  acquire(&tickslock);
+  p->ttime = ticks;
+  release(&tickslock);
+ 
+  
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
@@ -446,6 +470,7 @@ wait(uint64 addr)
             release(&wait_lock);
             return -1;
           }
+          
           freeproc(np);
           release(&np->lock);
           release(&wait_lock);
@@ -467,11 +492,9 @@ wait(uint64 addr)
 }
 
 
-/***** Added for A1T3 *****/
 int
-wait_stat(int* status, struct perf* performence){
-
-  printf("in waitstat\n");
+wait_stat(uint64 status, uint64 performence)
+{
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
@@ -490,26 +513,63 @@ wait_stat(int* status, struct perf* performence){
         if(np->state == ZOMBIE){
           // Found one.
           pid = np->pid;
-
-          if(status == 0 || performence == 0){
+          if(status != 0 && copyout(p->pagetable, status, (char *)&np->xstate,
+                                  sizeof(np->xstate)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
           }
 
-          freeproc(np);
+          //*****A1T3*****//
+          if(performence == 0){
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
 
-          *status = np->xstate;
-
-	      	performence->ctime = np->performence->ctime;
-	      	performence->ttime = np->performence->ttime;
-	      	performence->stime = np->performence->stime;
-	      	performence->retime = np->performence->retime;
-	      	performence->rutime = np->performence->rutime;
-	      	performence->bursttime = np->performence->bursttime;
-
+           if (copyout(p->pagetable, performence, (char*)&np->ctime,
+                                  sizeof(np->ctime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
           
+          if (copyout(p->pagetable, performence+sizeof(int), (char*)&np->ttime,
+                                  sizeof(np->ttime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
 
+          if (copyout(p->pagetable, performence+2*sizeof(int), (char*)&np->stime,
+                                  sizeof(np->stime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (copyout(p->pagetable, performence+3*sizeof(int), (char*)&np->retime,
+                                  sizeof(np->retime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (copyout(p->pagetable, performence+4*sizeof(int), (char*)&np->rutime,
+                                  sizeof(np->rutime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (copyout(p->pagetable, performence+5*sizeof(int), (char*)&np->average_bursttime,
+                                  sizeof(np->average_bursttime)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          
+          freeproc(np);
           release(&np->lock);
           release(&wait_lock);
           return pid;
@@ -529,16 +589,22 @@ wait_stat(int* status, struct perf* performence){
   }
 }
 
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
+int
+set_priority(uint64 priority){
+  struct proc* p = myproc();
+  if (priority < 1 || priority > 5)
+    return -1;
+  int pr[] = {0, THP, HP, NP, LP, TLP};
+  acquire(&p->lock);
+  p->decay_factor = pr[priority];
+  release(&p->lock);
+  return 0;
+}
+
+
 void
-scheduler(void)
-{
+default_scheduler(void){
+
   struct proc *p;
   struct cpu *c = mycpu();
   
@@ -553,7 +619,10 @@ scheduler(void)
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
+
+        p->current_burst = 0;          //intialize current burst
         p->state = RUNNING;
+
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -565,6 +634,187 @@ scheduler(void)
     }
   }
 }
+
+
+void
+fcfs_scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+  for(;;){
+    struct proc *np = 0;
+    int min_q = __INT32_MAX__;
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        if(p->fcfs_q < min_q){
+          min_q = p->fcfs_q;
+          np = p;
+        }
+      }
+      release(&p->lock);
+    }
+    if (np != 0){
+      acquire(&np->lock);
+      if (np->state == RUNNABLE){
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+
+        np->current_burst = 0;          //intialize current burst
+        np->state = RUNNING;
+
+        c->proc = np;
+        swtch(&c->context, &np->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+      release(&np->lock);
+    }
+  }
+}
+
+
+int ratio_time(struct proc* p){
+  if (p->rutime + p->stime == 0)
+    return 0;
+  return (p->rutime * p->decay_factor)/(p->rutime + p->stime);
+}
+
+
+void
+cfsd_scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;){
+    struct proc *np =0;
+    int min_ratio = __INT32_MAX__;
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        int curr_ratio = ratio_time(p);
+        if(curr_ratio < min_ratio){
+          min_ratio = curr_ratio;
+          np = p;
+        }
+      }
+      release(&p->lock);
+    }
+    
+    if (np != 0){
+      acquire(&np->lock);
+      if (np->state == RUNNABLE){
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+
+        np->current_burst = 0;          //intialize current burst
+        np->state = RUNNING;
+
+        c->proc = np;
+        swtch(&c->context, &np->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+      release(&np->lock);
+    }
+  }
+}
+
+
+void
+srt_scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+  for(;;){
+    struct proc *np = 0;
+    int min_burst = __INT32_MAX__;
+    // int np_q = __INT32_MAX__;
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        // if(p->average_bursttime < min_burst || (p->average_bursttime == min_burst && p->fcfs_q < np_q)){
+        /* proccesses bursttime decrease exponenetial to 0 because of the implementation of sleep.
+          during the tests some child proccesses come before the parent proccess in the proccess table, 
+          and since losind percision of float, most of the proccesses has bursttime of zero and only the first one gets cpu time. */
+        if(p->average_bursttime < min_burst){
+          min_burst = p->average_bursttime;
+          np = p;
+          // np_q = p->fcfs_q;
+        }
+      }
+      release(&p->lock);
+    }
+    if (np != 0){
+      acquire(&np->lock);
+      if (np->state == RUNNABLE){
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+
+        np->current_burst = 0;          //intialize current burst
+        np->state = RUNNING;
+        c->proc = np;
+        swtch(&c->context, &np->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+      release(&np->lock);
+    }
+  }
+}
+
+
+
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns.  It loops, doing:
+//  - choose a process to run.
+//  - swtch to start running that process.
+//  - eventually that process transfers control
+//    via swtch back to the scheduler.
+void
+scheduler(void)
+{
+  #ifdef DEFAULT
+  printf("DEFAULT scheduler started\n");  
+  default_scheduler();
+  #endif
+  #ifdef FCFS
+  printf("FCFS scheduler started\n");  
+  fcfs_scheduler();
+  #endif
+  #ifdef CFSD
+  printf("CFSD scheduler started\n");  
+  cfsd_scheduler();
+  #endif
+  #ifdef SRT
+  printf("SRT scheduler started\n");
+  srt_scheduler();
+  #endif
+}
+
+
+
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -588,6 +838,8 @@ sched(void)
   if(intr_get())
     panic("sched interruptible");
 
+  p->average_bursttime = (ALPHA*(p->current_burst))+((100-ALPHA)*(p->average_bursttime))/100;
+
   intena = mycpu()->intena;
   swtch(&p->context, &mycpu()->context);
   mycpu()->intena = intena;
@@ -600,6 +852,13 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  // A1T4 - FCFS
+
+  acquire(&fcfs_lock);
+  p->fcfs_q = FCFS_Q;
+  FCFS_Q++;
+  release(&fcfs_lock);
+  
   sched();
   release(&p->lock);
 }
@@ -631,7 +890,6 @@ void
 sleep(void *chan, struct spinlock *lk)
 {
   struct proc *p = myproc();
-  
   // Must acquire p->lock in order to
   // change p->state and then call sched.
   // Once we hold p->lock, we can be
@@ -644,7 +902,9 @@ sleep(void *chan, struct spinlock *lk)
 
   // Go to sleep.
   p->chan = chan;
+
   p->state = SLEEPING;
+  
 
   sched();
 
@@ -668,6 +928,13 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+
+        // A1T4 - FCFS
+        acquire(&fcfs_lock);
+        p->fcfs_q = FCFS_Q;
+        FCFS_Q++;
+        release(&fcfs_lock);
+
       }
       release(&p->lock);
     }
@@ -686,16 +953,14 @@ kill(int pid)
     acquire(&p->lock);
     if(p->pid == pid){
       p->killed = 1;
-
-    // Added for A1T3
-	  // Update termination time.
-	  acquire(&tickslock);
-	  p->performence->ttime = ticks;
-	  release(&tickslock);
-
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        // A1T4 - FCFS
+        acquire(&fcfs_lock);
+        p->fcfs_q = FCFS_Q;
+        FCFS_Q++;
+        release(&fcfs_lock);
       }
       release(&p->lock);
       return 0;
@@ -764,7 +1029,7 @@ procdump(void)
   }
 }
 
-//Added for A1T3
+//Added for A1T2
 int
 trace(int mask, int pid)
 {

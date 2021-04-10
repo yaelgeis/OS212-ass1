@@ -8,6 +8,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct perf;
 
 // bio.c
 void            binit(void);
@@ -95,6 +96,14 @@ struct cpu*     getmycpu(void);
 struct proc*    myproc();
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
+
+//A1T4
+void            default_scheduler(void) __attribute__((noreturn));
+void            fcfs_scheduler(void) __attribute__((noreturn));
+void            cfsd_scheduler(void) __attribute__((noreturn));
+void            srt_scheduler(void) __attribute__((noreturn));
+
+
 void            sched(void);
 void            setproc(struct proc*);
 void            sleep(void*, struct spinlock*);
@@ -107,7 +116,8 @@ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 int 			trace(int mask, int pid);                   //Added for A1T2
 void 			update_perf();                              //Added for A1T3
-// int 			wait_stat(int* status, struct perf*);       //Added for A1T3
+int 			wait_stat(uint64, uint64);                  //Added for A1T3
+int             set_priority(uint64);                       //Added for A1T3 - CFSD
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -149,6 +159,8 @@ void            trapinit(void);
 void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
+extern int      FCFS_Q;                         // A1T4
+extern struct spinlock fcfs_lock;      // A1T4
 
 // uart.c
 void            uartinit(void);

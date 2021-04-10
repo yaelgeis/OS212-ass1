@@ -9,6 +9,11 @@
 struct spinlock tickslock;
 uint ticks;
 
+
+// A1T4 - a variable to track the order of the runnable proccesses
+int FCFS_Q = 0;
+struct spinlock fcfs_lock;
+
 extern char trampoline[], uservec[], userret[];
 
 // in kernelvec.S, calls kerneltrap().
@@ -19,6 +24,7 @@ extern int devintr();
 void
 trapinit(void)
 {
+  initlock(&fcfs_lock, "fcfs queue");
   initlock(&tickslock, "time");
 }
 
@@ -76,10 +82,13 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
+  //****A1T4*****//
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  #ifndef FCFS
+  if(which_dev == 2 && p->current_burst >= QUANTUM){ 
     yield();
-
+  } 
+  #endif
   usertrapret();
 }
 
@@ -149,12 +158,16 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
-    yield();
 
-  // the yield() may have caused some traps to occur,
-  // so restore trap registers for use by kernelvec.S's sepc instruction.
+  //***A1T4***//
+  // give up the CPU if this is a timer interrupt.
+
+  #ifndef FCFS
+  struct proc *p = myproc();
+  if(which_dev == 2 && p != 0 && p->state == RUNNING && p->current_burst >= QUANTUM){
+    yield();
+  } 
+  #endif
   w_sepc(sepc);
   w_sstatus(sstatus);
 }
@@ -164,7 +177,7 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
-  update_perf();      //update performence each time tick - A1T2
+  update_perf();      //update performence each time tick - A1T3
   wakeup(&ticks);
   release(&tickslock);
 }

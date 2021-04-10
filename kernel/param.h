@@ -12,3 +12,14 @@
 #define FSSIZE       1000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
 #define QUANTUM 	 5	   // Added for A1T4
+ 
+#define ALPHA 	     50	   // Added for A1T4
+
+//A1T4 - decay factors CFSD
+#define THP 	 1  // Test High Priority	   
+#define HP 	     3  // High Priority	   
+#define NP 	     5  // Normal Priority
+#define LP 	     7  // Low Priority
+#define TLP 	 25 // Test Low Priority
+
+
